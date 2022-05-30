@@ -6,12 +6,37 @@ using System.Threading;
 using System.Reflection;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Collections.Concurrent;
 
 using SharpAdbClient;
 using ICSharpCode.SharpZipLib.Zip;
 
 namespace ADBForwarder
 {
+    public class LogShellOutputReceiver : IShellOutputReceiver
+    {
+        public readonly ConcurrentQueue<string> LogShellOutputs = new ConcurrentQueue<string>();
+
+        public bool ParsesErrors => false;
+
+        public void AddOutput(string line)
+        {
+            LogShellOutputs.Enqueue(line);
+        }
+
+        public void Flush()
+        {
+            string outputBuffer;
+            while (!LogShellOutputs.IsEmpty)
+            {
+                if (LogShellOutputs.TryDequeue(out outputBuffer))
+                {
+                    Console.WriteLine(outputBuffer);
+                }
+            }
+        }
+    }
+
     internal class Program
     {
         public const string VERSION = "0.2";
@@ -29,6 +54,7 @@ namespace ADBForwarder
         private static readonly AdbClient client = new AdbClient();
         private static readonly AdbServer server = new AdbServer();
         private static readonly IPEndPoint endPoint = new IPEndPoint(IPAddress.Loopback, AdbClient.AdbServerPort);
+        private static readonly LogShellOutputReceiver outputReceiver = new LogShellOutputReceiver();
 
         private static void Main()
         {
@@ -123,7 +149,9 @@ namespace ADBForwarder
 
                 Console.ForegroundColor = ConsoleColor.Green;
                 Console.WriteLine($"Successfully forwarded device: {deviceData.Serial} [{deviceData.Product}]");
-                    
+
+                client.ExecuteRemoteCommand("am start -n alvr.client.quest/com.polygraphene.alvr.OvrActivity", deviceData, outputReceiver);
+
                 return;
             }
         }
