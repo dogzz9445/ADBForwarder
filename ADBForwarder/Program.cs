@@ -10,6 +10,7 @@ using System.Collections.Concurrent;
 
 using SharpAdbClient;
 using ICSharpCode.SharpZipLib.Zip;
+using System.Threading.Tasks;
 
 namespace ADBForwarder
 {
@@ -117,12 +118,32 @@ namespace ADBForwarder
             }
         }
 
-        private static void Monitor_DeviceConnected(object sender, DeviceDataEventArgs e)
+        private static async void Monitor_DeviceConnected(object sender, DeviceDataEventArgs e)
         {
             Console.ForegroundColor = ConsoleColor.DarkGreen;
             Console.WriteLine($"Connected device: {e.Device.Serial}");
             Forward(e.Device);
+
+            await Task.Delay(1000);
+
+            StartALVRClient(e.Device);
         }
+
+        private static void StartALVRClient(DeviceData device)
+        {
+            foreach (var deviceData in client.GetDevices().Where(deviceData => device.Serial == deviceData.Serial))
+            {
+                if (!deviceNames.Contains(deviceData.Product))
+                {
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    Console.WriteLine($"Skipped forwarding device: {(string.IsNullOrEmpty(deviceData.Product) ? deviceData.Serial : deviceData.Product)}");
+                    return;
+                }
+
+                client.ExecuteRemoteCommand("am start -n alvr.client.quest/com.polygraphene.alvr.OvrActivity", deviceData, outputReceiver);
+            }
+        }
+
 
         private static void Monitor_DeviceDisconnected(object sender, DeviceDataEventArgs e)
         {
@@ -149,8 +170,6 @@ namespace ADBForwarder
 
                 Console.ForegroundColor = ConsoleColor.Green;
                 Console.WriteLine($"Successfully forwarded device: {deviceData.Serial} [{deviceData.Product}]");
-
-                client.ExecuteRemoteCommand("am start -n alvr.client.quest/com.polygraphene.alvr.OvrActivity", deviceData, outputReceiver);
 
                 return;
             }
